@@ -6,7 +6,7 @@
     
     REAL*8,EXTERNAL::fermi,rtbis,integrand
     integer, allocatable::ind(:,:,:)
-    INTEGER::i,j,k,l,m,n,lp,mp,np,counter,iw,pw,is
+    INTEGER::i,j,k,ky,kz,l,m,n,lp,mp,np,counter,iw,pw,is
     REAL*8:: time_start,time_finish,time_elapsed
     
         !   Arrays and variables for LAPACK
@@ -110,17 +110,22 @@
         
         do iw=1,Nw
             sumk(:,:)=(0.d0,0.d0)
-            do k=1,Nk**3
-                w(iw)=wmin+dw*(iw-1)
-                H(1,1)=2*t*(cos((kk(1,k)*C))+cos((kk(2,k)*C))+cos((kk(3,k)*C)))
-                H(2,2)=H(1,1)       
-                Gdummy(:,:)=(w(iw)+ii*0.05D0)*IdMat(:,:)-H(:,:)-sigma(:,:,iw)
+            do k=1,Nk
+                do ky=1,Nk
+                    do kz=1,Nk
+                        w(iw)=wmin+dw*(iw-1)
+                        H(1,1)=2*t*(cos((kk(1,k)*C))+cos((kk(2,ky)*C))+cos((kk(3,kz)*C)))
+                        H(2,2)=H(1,1)       
+                        Gdummy(:,:)=(w(iw)+ii*0.05D0)*IdMat(:,:)-H(:,:)-sigma(:,:,iw)
+                    end do
+                end do
+            enddo
                 
                 !      Matrix Inversion
                 call zgetrf(nrows,nrows,Gdummy,nrows,ipiv,info)
                 call zgetri(nrows,Gdummy,nrows,ipiv,work,2*nrows,info)
 
-                
+            do k=1,Nk**3
                 G(:,:,iw)=Gdummy(:,:)
                 sumk(:,:)=sumk(:,:)+G(:,:,iw)*wk(k)
             enddo
