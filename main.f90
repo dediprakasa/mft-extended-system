@@ -6,33 +6,31 @@
     
     REAL*8,EXTERNAL::fermi,rtbis,integrand
     integer, allocatable::ind(:,:,:)
-    INTEGER::i,j,k,ky,kz,l,m,n,lp,mp,np,counter,iw,pw,is
+    INTEGER::i,j,k,l,m,n,lp,mp,np,counter,iw,pw,is,ism
     REAL*8:: time_start,time_finish,time_elapsed
-    
-        !   Arrays and variables for LAPACK
-    complex*16, dimension(2*2)::work
-    integer, dimension(2)::ipiv
+!   Arrays and variables for LAPACK
+    complex*16, dimension(4*4)::work
+    integer, dimension(4)::ipiv
     integer::info
 
     call CPU_TIME(time_start)
     
     eps=0.D0
-    t1=1.D0
+    t1=-1.D0
     t2=0.D0
-    Nw=501
+    Nw=401
     wmin=-8.D0
     wmax=8.D0
-    nrows=2
+    nrows=4
     nfilling=nrows/2.D0
     U = 0.d0
     alpha = 0.1d0
-    Nk=51
+    Nk=32
 
 
 
     
     call allocation
-    allocate(ind(0:4,0:4,0:4))  
 
     !   Pemberat integrasi Simpson komposit
     dw=(wmax-wmin)/real(Nw-1,8)
@@ -59,10 +57,12 @@
     ! Matriks sigma awal
     sigma(:,:,:) = 0.d0
 
-    do j = 1,nrows/2
-        n_up(j) = 0.5d0
-        n_down(j+nrows/2) = 0.5d0
-    end do
+	n_up(:) =0.d0
+	n_down(:)=0.d0
+        n_up(1) = 0.7d0
+        n_up(2) = 0.3d0
+        n_down(1) = 0.3d0
+        n_down(2) = 0.7d0
 
     do j = 1,nrows/2
         sigma(j,j,:) = U*n_down(j)
@@ -73,7 +73,7 @@
     ! kkkkkkkkkkkkkkkkkk
 
     dk=(2.d0*pi/C)/real(Nk-1,8)
-
+!   print*,dk
     wk(:)=1.d0
 
     do i=1,Nk
@@ -83,7 +83,6 @@
                 kk(1,n)=(-pi/C)+dk*real(i-1,8)   
                 kk(2,n)=(-pi/C)+dk*real(j-1,8)   
                 kk(3,n)=(-pi/C)+dk*real(l-1,8)
-
                 if((i==1).or.(i==Nk)) wk(n)=0.5d0*wk(n)
                 if((j==1).or.(j==Nk)) wk(n)=0.5d0*wk(n)
                 if((l==1).or.(l==Nk)) wk(n)=0.5d0*wk(n)
@@ -91,10 +90,6 @@
         enddo
     enddo
     normk=sum(wk)
-
-
-    H(1,2)=0.d0
-    H(2,1)=0.d0
 
     if (U == 0.d0) then
         ism = 1
@@ -110,32 +105,34 @@
         
         do iw=1,Nw
             sumk(:,:)=(0.d0,0.d0)
-            do k=1,Nk
-                do ky=1,Nk
-                    do kz=1,Nk
-                        w(iw)=wmin+dw*(iw-1)
-                        H(1,1)=2*t*(cos((kk(1,k)*C))+cos((kk(2,ky)*C))+cos((kk(3,kz)*C)))
-                        H(2,2)=H(1,1)       
-                        Gdummy(:,:)=(w(iw)+ii*0.05D0)*IdMat(:,:)-H(:,:)-sigma(:,:,iw)
-                    end do
-                end do
-            enddo
+            do k=1,Nk**3
+                w(iw)=wmin+dw*(iw-1)
+                H(1,2)=2*t1*(cos((kk(1,k)*C))+cos((kk(2,k)*C))+cos((kk(3,k)*C)))
+                H(2,1)=H(1,2)
+                H(3,4)=H(1,2)
+                H(4,3)=H(1,2)
+
+                Gdummy(:,:)=(w(iw)+ii*0.2D0)*IdMat(:,:)-H(:,:)-sigma(:,:,iw)
                 
+
                 !      Matrix Inversion
                 call zgetrf(nrows,nrows,Gdummy,nrows,ipiv,info)
                 call zgetri(nrows,Gdummy,nrows,ipiv,work,2*nrows,info)
-
-            do k=1,Nk**3
+                
                 G(:,:,iw)=Gdummy(:,:)
-                sumk(:,:)=sumk(:,:)+G(:,:,iw)*wk(k)
-            enddo
 
+                sumk(:,:)=sumk(:,:)+G(:,:,iw)*wk(k)
+!                print*, maxval((sumk(:,:)))
+
+            end do
                 G(:,:,iw)=(1/normk)*sumk(:,:)
+                
                 traceup = 0.d0
                 tracedown = 0.d0
                 
                 do j=1,nrows/2
                     traceup = traceup + aimag(G(j,j,iw))
+                    
                 end do
 
                 do j = (nrows/2)+1,nrows
@@ -164,6 +161,7 @@
             do iw = 1,Nw
                 nn(j) = nn(j)+PDOS(j,iw)*fermi(mu,T,w(iw))*wfreq(iw)          
             end do  
+            print*,j,nn(j)
         end do
 
 
@@ -183,14 +181,14 @@
         ! Cek error
         print *, 'error', maxval(abs(sigmaf(:,:,:) - sigma(:,:,:)))
         print *, 'norm',norm
-        if (maxval(abs(sigmaf(:,:,:) - sigma(:,:,:))) .lt. 0.008d0) then 
+        if (maxval(abs(sigmaf(:,:,:) - sigma(:,:,:))) .lt. 0.05d0) then 
             print *, 'Konvergen'
-!           open(unit=111,file='GF.dat',status='unknown')
+!           open(unit=111,file='GF.dat',status='unknown'
             open(unit=11,file='DoS_vs_w.dat',status='unknown')
             open(unit=15,file='DoSup_vs_w.dat',status='unknown')
             open(unit=16,file='DoSdown_vs_w.dat',status='unknown')
             open(unit=12,file='mu.dat',status='unknown')
-            open(unit=14,file='nnn.dat',status='unknown')
+            open(unit=14,file='nnn4.dat',status='unknown')
             write(12,*)mu,0.D0
             write(12,*)mu,nrows/2.D0        
                 do iw = 1,Nw
@@ -201,7 +199,7 @@
  !                       write(14,*)j,sigma(j+nrows/2,j+nrows/2,iw)/U,sigma(j,j,iw)/U
  !                   end do
                 end do
-            call Optical_Response
+ !           call Optical_Response
 
             call CPU_TIME(time_finish)
         
@@ -230,7 +228,6 @@
 
 
 
-    deallocate(ind)
     call deallocation
 
 
@@ -251,7 +248,7 @@
     DO i=1,Nw
         tot=tot+DOS(i)*fermi(x,T,w(i))*wfreq(i)
     END DO
-    integrand=nfilling-(tot*Real(nrows,8)/norm)
+    integrand=nfilling-(tot*real(nrows,8)/norm)
     
     RETURN
 
